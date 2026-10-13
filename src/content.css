@@ -1,0 +1,370 @@
+/* Badges + hiding for YT Topic Filter */
+.ytf-thumb-host {
+  position: relative !important;
+}
+
+.ytf-host {
+  position: relative !important;
+}
+
+.ytf-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 40;
+  font-family: Roboto, Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: #fff;
+  background: var(--ytf-color, #64748b);
+  padding: 4px 8px;
+  border-radius: 999px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  max-width: 80%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ytf-badge.ytf-pending {
+  background: rgba(100, 116, 139, 0.9);
+  animation: ytf-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes ytf-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* hide modes */
+.ytf-hide {
+  display: none !important;
+}
+
+/* top bar button + dropdown panel */
+#ytf-topbar {
+  display: flex;
+  align-items: center;
+  flex: none;
+  margin-right: 8px;
+}
+
+#ytf-topbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 16px;
+  background: rgba(0, 0, 0, 0.06);
+  border: none;
+  border-radius: 18px;
+  color: #0f0f0f;
+  font-family: Roboto, Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+#ytf-topbar-btn:hover {
+  filter: brightness(0.92);
+}
+
+#ytf-topbar-btn svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+  flex: none;
+}
+
+#ytf-topbar-btn.ytf-off {
+  opacity: 0.45;
+}
+
+#ytf-topbar-count {
+  font-size: 12px;
+  font-weight: 400;
+  opacity: 0.6;
+}
+
+#ytf-topbar-count:empty {
+  display: none;
+}
+
+#ytf-panel {
+  position: fixed;
+  top: 56px;
+  right: 12px;
+  z-index: 999999;
+  width: 300px;
+  max-height: calc(100vh - 70px);
+  overflow-y: auto;
+  font-family: Roboto, Arial, sans-serif;
+  font-size: 13px;
+  color: #0f0f0f;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  padding: 12px;
+}
+
+.ytf-p-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.ytf-p-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.ytf-p-enable {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ytf-p-count {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-bottom: 6px;
+}
+
+.ytf-p-sect {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.7;
+  margin: 10px 0 4px;
+}
+
+.ytf-p-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.ytf-p-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px;
+  border-radius: 6px;
+}
+
+.ytf-p-row:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.ytf-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
+}
+
+.ytf-p-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.ytf-p-name b {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ytf-p-name span {
+  display: block;
+  font-size: 10px;
+  opacity: 0.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ytf-p-del {
+  background: transparent;
+  border: none;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  flex: none;
+}
+
+.ytf-p-del:hover {
+  opacity: 1;
+}
+
+.ytf-p-prefs {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.ytf-p-add input,
+.ytf-p-conf input[type="range"] {
+  accent-color: #3ea6ff;
+}
+
+.ytf-p-check {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ytf-p-conf {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.ytf-p-conf label {
+  white-space: nowrap;
+}
+
+.ytf-p-conf input[type="range"] {
+  flex: 1;
+}
+
+.ytf-p-add {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.ytf-p-add input {
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: inherit;
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+.ytf-p-add .ytf-p-wide {
+  grid-column: 1 / -1;
+}
+
+.ytf-p-addrow {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.ytf-p-addrow input[type="color"] {
+  width: 32px;
+  height: 28px;
+  padding: 0;
+  border-radius: 6px;
+}
+.ytf-p-btn {
+  flex: 1;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: #3ea6ff;
+  color: #0f0f0f;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ytf-p-btn:hover {
+  filter: brightness(1.1);
+}
+
+.ytf-p-ghost {
+  background: transparent;
+  color: inherit;
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+.ytf-p-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.ytf-p-toast {
+  margin-top: 8px;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+
+.ytf-p-mrow {
+  display: flex;
+  gap: 6px;
+}
+
+.ytf-p-mrow input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: inherit;
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+.ytf-p-mrow .ytf-p-btn {
+  flex: none;
+}
+
+.ytf-p-status {
+  margin-top: 4px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* Dark theme: YouTube sets `dark` on <html>. Hardcoded colors on purpose —
+   --yt-spec-* vars may not resolve inside injected elements. */
+html[dark] #ytf-topbar-btn {
+  background: rgba(255, 255, 255, 0.12);
+  color: #f1f1f1;
+}
+html[dark] #ytf-panel {
+  background: #282828;
+  color: #f1f1f1;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+html[dark] .ytf-p-row:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+html[dark] .ytf-p-add input,
+html[dark] .ytf-p-mrow input {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #f1f1f1;
+}
+html[dark] .ytf-p-ghost {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+html[dark] .ytf-p-toast {
+  background: rgba(255, 255, 255, 0.12);
+}
