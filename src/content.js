@@ -448,6 +448,7 @@
       const cb = document.createElement("input");
       cb.type = "checkbox";
       cb.checked = !state.hiddenTopics.includes(t.name);
+      if (!cb.checked) row.classList.add("ytf-is-hidden");
       cb.title = state.hiddenTopics.includes(t.name) ? "Hidden — check to show" : "Shown — uncheck to hide";
       cb.addEventListener("change", async () => {
         const hidden = new Set(state.hiddenTopics);
@@ -461,7 +462,7 @@
       const dot = el("span", "ytf-dot");
       dot.style.background = t.color || topicColor(t.name);
       const name = el("div", "ytf-p-name");
-      name.appendChild(el("b", null, `${cb.checked ? "👁 " : "🚫 "}${t.name === "other" ? "Other" : t.name}`));
+      name.appendChild(el("b", null, t.name === "other" ? "Other" : t.name));
       const sub = el("span", null, t.description || "");
       sub.title = t.description || "";
       name.appendChild(sub);
