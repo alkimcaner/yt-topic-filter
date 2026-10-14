@@ -206,6 +206,13 @@ function requestClassify(title, topics) {
   });
 }
 
+function softmax(arr) {
+  const m = Math.max(...arr);
+  const exps = arr.map((x) => Math.exp(x - m));
+  const sum = exps.reduce((a, b) => a + b, 0) || 1;
+  return exps.map((e) => e / sum);
+}
+
 function decideForVideo(topics, labelTexts, entails) {
   const scores = softmax(entails);
   const order = scores.map((s, i) => [s, i]).sort((a, b) => b[0] - a[0]);

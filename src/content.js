@@ -17,6 +17,16 @@
   const MODEL_LABEL = "zeroshot-small q8 · local";
   const ERROR_RETRY_MS = 30000; // backoff before a failed card is re-tried
   const PROGRESS_STORE_KEY = "ytf_model_progress_v1"; // written by background.js
+
+  // Storage writes after the extension was reloaded (old tab, dead context)
+  // reject as uncaught promise rejections — swallow them; a tab refresh
+  // picks up the new worker.
+  function storageSet(items) {
+    try {
+      const p = chrome.storage.sync.set(items);
+      if (p && typeof p.catch === "function") p.catch(() => {});
+    } catch { /* extension context invalidated */ }
+  }
   const DEFAULT_TOPICS = [
     { name: "Gaming", description: "video games, gameplay, walkthroughs, esports, Minecraft, Fortnite", color: "#8b5cf6" },
     { name: "Tech", description: "gadgets, smartphones, AI, programming, software, computers, reviews", color: "#0ea5e9" },
@@ -41,7 +51,7 @@
 
   const cards = new Map(); // key -> Set<HTMLElement>
   const pending = new Map(); // key -> Promise
-  let stats = { classified: 0, hidden: 0 };
+  let stats = { classified: 0, hidden: 0, errors: 0, lastError: "" };
   let scanTimer = null;
 
   function textOf(el) {
@@ -210,6 +220,21 @@
     updateTopbarCount();
   }
 
+  // Surface classification failures in the open panel (badges just vanish
+  // otherwise, leaving nothing to diagnose).
+  function noteError(msg) {
+    stats.errors++;
+    stats.lastError = String(msg || "unknown");
+    const p = document.getElementById("ytf-panel");
+    if (p && !p.hidden) {
+      const e = p.querySelector(".ytf-p-errline");
+      if (e) {
+        e.textContent = `${stats.errors} failed — ${stats.lastError}`;
+        e.hidden = false;
+      }
+    }
+  }
+
   function applyAllFilters() {
     for (const [, set] of cards) {
       for (const card of set) {
@@ -289,6 +314,7 @@
     setBadge(card, "", 0, true);
 
     const res = await classifyOne(key, title, channel);
+    if (res.error) noteError(res.error);
     let topic = res.topic || "other";
     // if model returned a topic the user deleted, fold to other
     if (topic !== "other" && !state.topics.some((t) => t.name === topic)) {
@@ -457,7 +483,7 @@
     enCb.title = "Enable/disable filtering";
     enCb.addEventListener("change", async () => {
       state.enabled = enCb.checked;
-      await chrome.storage.sync.set({ enabled: state.enabled });
+      await storageSet({ enabled: state.enabled });
       applyAllFilters();
     });
     enLabel.append(enCb, el("span", null, "On"));
@@ -466,6 +492,11 @@
 
     panel.appendChild(el("div", "ytf-p-count",
       stats.hidden > 0 ? `${stats.hidden} video${stats.hidden > 1 ? "s" : ""} hidden` : "Nothing hidden"));
+    const errLine = el("div", "ytf-p-errline",
+      stats.errors > 0 ? `${stats.errors} failed — ${stats.lastError}` : "");
+    errLine.hidden = stats.errors === 0;
+    errLine.title = stats.lastError || "";
+    panel.appendChild(errLine);
 
     panel.appendChild(el("div", "ytf-p-sect", "Topics — uncheck to hide"));
     const list = el("div", "ytf-p-list");
@@ -482,7 +513,7 @@
         if (cb.checked) hidden.delete(t.name);
         else hidden.add(t.name);
         state.hiddenTopics = [...hidden];
-        await chrome.storage.sync.set({ hiddenTopics: state.hiddenTopics });
+        await storageSet({ hiddenTopics: state.hiddenTopics });
         applyAllFilters();
         renderPanel(panel);
       });
@@ -501,7 +532,7 @@
           if (del.dataset.armed) {
             const cur = await chrome.storage.sync.get({ topics: [], hiddenTopics: [] });
             const topics = (cur.topics || []).filter((x) => x.name !== t.name);
-            await chrome.storage.sync.set({
+            await storageSet({
               topics,
               hiddenTopics: (cur.hiddenTopics || []).filter((x) => x !== t.name),
             });
@@ -529,7 +560,7 @@
     bCb.checked = !!state.showBadges;
     bCb.addEventListener("change", async () => {
       state.showBadges = bCb.checked;
-      await chrome.storage.sync.set({ showBadges: state.showBadges });
+      await storageSet({ showBadges: state.showBadges });
       document.querySelectorAll(".ytf-badge").forEach((b) => { b.style.display = state.showBadges ? "" : "none"; });
     });
     bLabel.append(bCb, el("span", null, "badges"));
@@ -550,7 +581,7 @@
     range.addEventListener("input", () => { confVal.textContent = `${range.value}%`; });
     range.addEventListener("change", async () => {
       state.minConfidence = Number(range.value) / 100;
-      await chrome.storage.sync.set({ minConfidence: state.minConfidence });
+      await storageSet({ minConfidence: state.minConfidence });
     });
     confRow.append(confLab, range);
     panel.appendChild(confRow);
@@ -575,7 +606,7 @@
       const cur = (await chrome.storage.sync.get({ topics: [] })).topics || [];
       if (cur.some((x) => (x.name || "").toLowerCase() === name.toLowerCase())) { panelToast(`Topic "${name}" already exists.`); return; }
       cur.push({ name, description: desc, color: inColor.value });
-      await chrome.storage.sync.set({ topics: cur });
+      await storageSet({ topics: cur });
       state.topics = cur;
       renderPanel(panel);
       panelToast(`Added "${name}".`);
@@ -605,9 +636,21 @@
       scheduleScan();
       setTimeout(scan, 300);
     };
+    // Transient port closures (worker died mid-flight) must not kill the
+    // poll loop: retry a few times, then park with a reopen hint.
+    let statusRetries = 0;
     const refreshStatus = () => {
       chrome.runtime.sendMessage({ type: "YTF_MODEL_STATUS" }, (resp) => {
-        if (chrome.runtime.lastError) { mStatus.textContent = "extension error"; return; }
+        if (chrome.runtime.lastError) {
+          if (statusRetries++ < 5 && mStatus.isConnected) {
+            mStatus.textContent = "reconnecting…";
+            setTimeout(refreshStatus, 1500);
+          } else {
+            mStatus.textContent = "extension error — reopen panel";
+          }
+          return;
+        }
+        statusRetries = 0;
         const s = resp?.status;
         if (!s) { mStatus.textContent = "unknown"; return; }
         if (s.state === "ready") {
@@ -719,7 +762,7 @@
         }, 3000);
         return;
       }
-      await chrome.storage.sync.set({ topics: DEFAULT_TOPICS.slice(), hiddenTopics: [] });
+      await storageSet({ topics: DEFAULT_TOPICS.slice(), hiddenTopics: [] });
       state.topics = DEFAULT_TOPICS.slice();
       state.hiddenTopics = [];
       applyAllFilters();
@@ -749,6 +792,7 @@
 
   // ---------- boot ----------
   async function boot() {
+    if (!chrome.runtime?.id) return; // dead context (extension reloaded in another tab state)
     await loadSettings();
     ensureTopbar();
     updateTopbarCount();

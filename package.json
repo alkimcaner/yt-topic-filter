@@ -7,7 +7,8 @@
   "scripts": {
     "setup": "sh scripts/fetch-ort.sh",
     "build": "bun build src/background.js --outfile=src/background.bundle.js --minify --target=browser && bun build src/offscreen.js --outfile=src/offscreen.bundle.js --minify --target=browser",
-    "benchmark": "node test/benchmark-100.js"
+    "benchmark": "node test/benchmark-100.js",
+    "smoke": "node --experimental-test-module-mocks --test test/offscreen-smoke.js"
   },
   "dependencies": {
     "@huggingface/transformers": "4.3.1"
