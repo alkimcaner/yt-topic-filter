@@ -14,6 +14,8 @@ const HYPOTHESIS_TEMPLATE = "This video is about {}.";
 const MIN_CONFIDENCE = 0.35;
 
 const tok = await AutoTokenizer.from_pretrained(MODEL_ID);
+// q8 to mirror production weights (device doesn't change numerics, and
+// node has no GPU).
 const model = await AutoModelForSequenceClassification.from_pretrained(MODEL_ID, { dtype: "q8", device: "cpu" });
 
 const r = await runStrategy({

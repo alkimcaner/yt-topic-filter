@@ -20,22 +20,21 @@ globalThis.chrome = {
   },
 };
 
-// Fake tokenizer: passes row count through for the fake model.
+// Fake tokenizer: passes row count + premises through for the fake model.
 const fakeTokenizer = (texts, opts) => ({
   __rows: Array.isArray(texts) ? texts.length : 1,
+  __premises: Array.isArray(texts) ? texts : [texts],
   __pairs: opts?.text_pair,
 });
 const ENT_ID = 1;
-// Fake model: a callable returning canned logits. Entailment peaks at a
-// deterministic topic per video row-block: video k (10 rows) peaks at
-// label (k * 3 + 1) % 10 with a sharp logit.
+// Fake model: entailment peaks deterministically per row: video k
+// (10 rows) peaks at label (k * 3 + 1) % 10. Sharp logits.
 const fakeModel = async (inputs) => {
   fakeModel.callCount++;
   const rows = inputs.__rows;
   const data = new Float32Array(rows * 2);
   for (let r = 0; r < rows; r++) {
-    const video = Math.floor(r / 10);
-    const peak = (video * 3 + 1) % 10;
+    const peak = (Math.floor(r / 10) * 3 + 1) % 10;
     for (let j = 0; j < 10; j++) data[r * 2 + j] = -2 + (j === peak ? 5 : 0);
     data[r * 2 + ENT_ID] = -2 + (r % 10 === peak ? 5 : 0);
   }
@@ -73,6 +72,21 @@ function callOffscreen(type, payload, timeoutMs = 15000) {
 
 const TOPICS = ["Gaming", "Tech", "Cooking", "Travel", "Music", "Education", "News", "Sports", "Comedy", "Film & TV"];
 const topics = TOPICS.map((name) => ({ name, description: `${name} stuff` }));
+
+await test("load reports ready", async () => {
+  await callOffscreen("YTF_OFF_LOAD", null);
+  let status = null;
+  for (let i = 0; i < 100; i++) {
+    const st = await callOffscreen("YTF_OFF_STATUS", null);
+    if (st.status?.state === "ready" || st.status?.state === "error") {
+      status = st.status;
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  assert.equal(status?.state, "ready", "not ready: " + status?.error);
+  fakeModel.callCount = 0; // exclude load + self-test calls from the batch count
+});
 
 await test("three videos form one batched call with correct mapping", async () => {
   const before = fakeModel.callCount;

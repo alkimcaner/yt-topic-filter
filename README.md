@@ -1,6 +1,6 @@
 # YT Topic Filter — Local AI (Brave extension)
 
-Categorize YouTube videos by topic with a **local multilingual zero-shot model** (`Horizon-Labs/multilingual-zeroshot-small`, q8, ~260 MB, runs on CPU/WASM) and **hide / show video cards per topic**. No server needed. Works on non-English titles too.
+Categorize YouTube videos by topic with a **local multilingual zero-shot model** (`Horizon-Labs/multilingual-zeroshot-small`, q8, ~260 MB, runs locally on CPU) and **hide / show video cards per topic**. No server needed. Works on non-English titles too.
 
 ## How it works
 
@@ -21,7 +21,7 @@ Prerequisite: [Bun](https://bun.sh) (only needed to rebuild the bundled worker a
 
 ## Configure
 
-- **Model**: fixed to `Horizon-Labs/multilingual-zeroshot-small`, q8, WASM. No endpoint, no server.
+- **Model**: fixed to `Horizon-Labs/multilingual-zeroshot-small`, q8 on CPU/WASM. No endpoint, no server.
 - **Topics**: fully editable in the panel (Add / delete / Reset to defaults). The topic **name** is what the model matches (`This video is about {name}`) — keep names crisp and unambiguous. Descriptions are shown in the panel only.
 - **Min confidence**: below this, videos are labeled `Other` instead of the top choice. Entailment scores are uncalibrated — retune on a few of your own videos.
 - **Hiding**: unchecked topics get `display:none` via the `.ytf-hide` class.

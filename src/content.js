@@ -350,7 +350,10 @@
       // still scan so badges exist for when user re-enables? skip to save work
     }
     const nodes = document.querySelectorAll(CARD_SELECTORS);
-    let n = 0;
+    // Collect eligible cards first (cheap dataset reads), then order
+    // viewport-first so visible videos label before below-fold ones.
+    // Rects are measured only for eligible cards to avoid layout work.
+    const eligible = [];
     for (const card of nodes) {
       if (!(card instanceof HTMLElement)) continue;
       // Failed cards become eligible again after their backoff (e.g. the
@@ -370,7 +373,25 @@
       // mark scanned to avoid re-extract cost every pass (re-scan pending ones)
       if (card.dataset.ytfScanned === "1" && pending.has(card.dataset.ytfKey || "")) continue;
       card.dataset.ytfScanned = "1";
-      // fire-and-forget, throttled
+      eligible.push(card);
+    }
+    // Viewport first (with a prefetch margin below the fold), rest after.
+    // display:none cards report top 0 and sort visible — harmless, they are
+    // almost always already classified and skipped above.
+    const vh = window.innerHeight || 0;
+    const vis = [];
+    const rest = [];
+    for (const card of eligible) {
+      let top = 0;
+      try {
+        top = card.getBoundingClientRect().top;
+      } catch { /* ignore */ }
+      (top < vh + 800 ? vis : rest).push(card);
+    }
+    const ordered = vis.concat(rest);
+    // fire-and-forget, throttled
+    let n = 0;
+    for (const card of ordered) {
       if (n < 60) {
         n++;
         processCard(card);

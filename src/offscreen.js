@@ -18,9 +18,18 @@ env.allowLocalModels = false;
     mjs: ortBase + "ort-wasm-simd-threaded.asyncify.mjs",
     wasm: ortBase + "ort-wasm-simd-threaded.asyncify.wasm",
   };
+  // WASM threads: requested, and they work — extension pages expose
+  // SharedArrayBuffer, so ORT spins up a real pool instead of falling back
+  // to 1 (it logs a warning when it does). Capped at 8: tiny batches stop
+  // scaling past a handful of threads.
+  const cores = (typeof navigator !== "undefined" && navigator.hardwareConcurrency) || 4;
+  env.backends.onnx.wasm.numThreads = Math.max(1, Math.min(8, cores));
 }
 
 const MODEL_ID = "Horizon-Labs/multilingual-zeroshot-small";
+// q8 on WASM: int8 has no WebGPU kernels in practice for this setup, and a
+// GPU run needs the 537 MB fp32 file, so the default stays single-threaded
+// WASM on the 256 MB q8 file.
 const MODEL_DTYPE = "q8";
 const MODEL_DEVICE = "wasm";
 // Template recommended for topic labels ("This video is about {}.").
@@ -182,13 +191,12 @@ async function clearModelCache() {
 }
 
 // Micro-batcher: collect classify requests for a short window, then run
-// MANY videos in ONE forward pass (rows = videos × labels). The fixed cost
-// of a session.run (graph launch + streaming 141M weights through one CPU
-// thread — WASM threads are impossible here, see below) dominates for short
-// titles, so bigger batches raise videos/sec several-fold at the price of a
-// few-ms wait per video. Groups by identical topic lists (normally all same).
-const BATCH_WINDOW_MS = 75;
-const MAX_VIDEOS_PER_BATCH = 8;
+// MANY videos in ONE forward pass (rows = videos × labels). Batching plus
+// WASM threads (see wasmPaths block above) together set the throughput:
+// bigger batches amortize graph launch, threads split the matmuls.
+// Groups by identical topic lists (normally all same).
+const BATCH_WINDOW_MS = 25;
+const MAX_VIDEOS_PER_BATCH = 4;
 let batchQueue = []; // { title, topics, resolve, reject }
 let flushTimer = null;
 
