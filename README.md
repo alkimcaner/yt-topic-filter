@@ -13,7 +13,7 @@ Categorize YouTube videos by topic with a **local multilingual zero-shot model**
 
 Prerequisite: [Bun](https://bun.sh) (only needed to rebuild the bundled worker after editing it).
 
-1. `bun install && bun run build` (required: generates the worker bundles + uses the vendored ORT runtime).
+1. `bun install && bun run setup && bun run build` (required: installs deps, fetches the vendored ORT runtime, generates the worker bundles).
 2. Open `brave://extensions`, enable **Developer mode**.
 3. **Load unpacked** → select this folder (the one containing `manifest.json`).
 4. Open YouTube. A `Topic filter` button sits in the top bar — click it for all controls: enable toggle, check/uncheck topics, badges toggle, confidence threshold, add/delete/reset topics, model Load/Redownload + status, rescan.

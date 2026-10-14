@@ -5,6 +5,7 @@
   "type": "module",
   "description": "YT Topic Filter — local NLI zero-shot topic classification (Brave extension). Bun bundles the service worker; the bundle is committed so Load-unpacked needs no build.",
   "scripts": {
+    "setup": "sh scripts/fetch-ort.sh",
     "build": "bun build src/background.js --outfile=src/background.bundle.js --minify --target=browser && bun build src/offscreen.js --outfile=src/offscreen.bundle.js --minify --target=browser",
     "benchmark": "node test/benchmark-100.js"
   },
