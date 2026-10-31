@@ -189,7 +189,7 @@
     const label = topicLabel(topic);
     const pct = Math.round((confidence || 0) * 100);
     badge.textContent = `${label} · ${pct}%`;
-    badge.title = `Topic: ${label} (${pct}% confidence) — via local zero-shot model`;
+    badge.title = `Topic: ${label} (${pct}% confidence) — via decision server`;
     badge.className = "ytf-badge ytf-done";
     badge.dataset.topic = topic;
     badge.style.setProperty("--ytf-color", topicColor(topic));
