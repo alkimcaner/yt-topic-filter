@@ -15,7 +15,7 @@
     "http://localhost:9931/*"
   ],
   "background": {
-    "service_worker": "src/background.bundle.js",
+    "service_worker": "src/background.js",
     "type": "module"
   },
   "content_scripts": [
