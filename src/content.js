@@ -344,7 +344,7 @@
     refreshHiddenCount();
   }
 
-  function scan() {
+  async function scan() {
     ensureTopbar();
     if (!state.enabled && cards.size === 0) {
       // still scan so badges exist for when user re-enables? skip to save work
@@ -388,7 +388,7 @@
     for (const card of ordered) {
       if (n < 60) {
         n++;
-        processCard(card);
+        await processCard(card);
       }
     }
     if (n > 0) refreshHiddenCount();
