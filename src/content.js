@@ -13,10 +13,7 @@
     "yt-lockup-view-model",
   ].join(",");
 
-  const MODEL_ID = "Horizon-Labs/multilingual-zeroshot-small";
-  const MODEL_LABEL = "zeroshot-small q8 · local";
   const ERROR_RETRY_MS = 30000; // backoff before a failed card is re-tried
-  const PROGRESS_STORE_KEY = "ytf_model_progress_v1"; // written by background.js
 
   // Storage writes after the extension was reloaded (old tab, dead context)
   // reject as uncaught promise rejections — swallow them; a tab refresh
@@ -245,6 +242,9 @@
   }
 
   function classifyOne(key, title, channel) {
+    if (!chrome.runtime?.id) {
+      return Promise.resolve({ topic: "other", confidence: 0, error: "extension context invalidated" });
+    }
     if (pending.has(key)) return pending.get(key);
     const p = new Promise((resolve) => {
       let done = false;
@@ -371,24 +371,18 @@
       // skip channel avatars / ads that have no title link
       if (card.dataset.ytfScanned && card.dataset.ytfTopic) continue;
       // mark scanned to avoid re-extract cost every pass (re-scan pending ones)
-      if (card.dataset.ytfScanned === "1" && pending.has(card.dataset.ytfKey || "")) continue;
+      if (card.dataset.ytfScanned === "1" && pending.has(card.dataset.ytfKey || "")) {
+        const k = card.dataset.ytfKey;
+        if (k) {
+          if (!cards.has(k)) cards.set(k, new Set());
+          cards.get(k).add(card);
+        }
+        continue;
+      }
       card.dataset.ytfScanned = "1";
       eligible.push(card);
     }
-    // Viewport first (with a prefetch margin below the fold), rest after.
-    // display:none cards report top 0 and sort visible — harmless, they are
-    // almost always already classified and skipped above.
-    const vh = window.innerHeight || 0;
-    const vis = [];
-    const rest = [];
-    for (const card of eligible) {
-      let top = 0;
-      try {
-        top = card.getBoundingClientRect().top;
-      } catch { /* ignore */ }
-      (top < vh + 800 ? vis : rest).push(card);
-    }
-    const ordered = vis.concat(rest);
+    const ordered = eligible;
     // fire-and-forget, throttled
     let n = 0;
     for (const card of ordered) {
@@ -637,120 +631,6 @@
     addGrid.append(inName, inDesc, addRow);
     panel.appendChild(addGrid);
 
-    panel.appendChild(el("div", "ytf-p-sect", "Model"));
-    const mInfo = el("div", "ytf-p-status", MODEL_LABEL);
-    mInfo.title = MODEL_ID;
-    panel.appendChild(mInfo);
-    const mRow = el("div", "ytf-p-mrow");
-    const loadBtn = el("button", "ytf-p-btn", "Load model");
-    loadBtn.title = `Download once (~260 MB q8), then run locally (${MODEL_ID})`;
-    const mStatus = el("div", "ytf-p-status", "checking…");
-    const fmtMB = (n) => `${(Number(n || 0) / 1048576).toFixed(0)} MB`;
-    // Set when the user kicks off a load: the poll below fires the toast +
-    // rescan once the worker actually reports ready (loads take minutes and
-    // outlive any single message round-trip).
-    let armedRescan = false;
-    const fireReady = () => {
-      if (!armedRescan) return;
-      armedRescan = false;
-      panelToast("Model ready — re-classifying…");
-      scheduleScan();
-      setTimeout(scan, 300);
-    };
-    // Transient port closures (worker died mid-flight) must not kill the
-    // poll loop: retry a few times, then park with a reopen hint.
-    let statusRetries = 0;
-    const refreshStatus = () => {
-      chrome.runtime.sendMessage({ type: "YTF_MODEL_STATUS" }, (resp) => {
-        if (chrome.runtime.lastError) {
-          if (statusRetries++ < 5 && mStatus.isConnected) {
-            mStatus.textContent = "reconnecting…";
-            setTimeout(refreshStatus, 1500);
-          } else {
-            mStatus.textContent = "extension error — reopen panel";
-          }
-          return;
-        }
-        statusRetries = 0;
-        const s = resp?.status;
-        if (!s) { mStatus.textContent = "unknown"; return; }
-        if (s.state === "ready") {
-          mStatus.textContent = `ready (${MODEL_LABEL})`;
-          loadBtn.textContent = "Loaded ✓";
-          fireReady();
-        } else if (s.state === "loading") {
-          const pct = Math.round((s.progress || 0) * 100);
-          const shortFile = s.file ? String(s.file).split("/").pop() : "";
-          const cleared = s.lastCleared && Date.now() - s.lastCleared.at < 300000
-            ? ` — cleared ${s.lastCleared.removed}/${s.lastCleared.scanned} files${s.lastCleared.wiped ? " (full wipe)" : ""}`
-            : "";
-          mStatus.textContent = s.total > 0
-            ? `downloading… ${pct}% (${fmtMB(s.loaded)} / ${fmtMB(s.total)})${shortFile ? ` — ${shortFile}` : ""}${cleared}`
-            : `loading… ${pct}%${shortFile ? ` — ${shortFile}` : ""}${cleared}`;
-          mStatus.title = s.file || "";
-          loadBtn.textContent = "Loading…";
-          setTimeout(() => { if (mStatus.isConnected) refreshStatus(); }, 1000);
-        } else if (s.state === "error") {
-          armedRescan = false;
-          mStatus.textContent = `error — ${s.error || "failed to load"}`;
-          loadBtn.textContent = "Retry load";
-        } else {
-          mStatus.textContent = "not loaded — click Load (~260 MB first run)";
-          loadBtn.textContent = "Load model";
-          // Work was kicked off but the worker hasn't reported loading yet
-          // (doc still booting): keep polling instead of going quiet.
-          if (armedRescan && mStatus.isConnected) {
-            setTimeout(refreshStatus, 1000);
-          }
-        }
-      });
-    };
-    loadBtn.addEventListener("click", () => {
-      armedRescan = true;
-      mStatus.textContent = "loading…";
-      loadBtn.textContent = "Loading…";
-      chrome.runtime.sendMessage({ type: "YTF_MODEL_LOAD" }, (resp) => {
-        if (chrome.runtime.lastError) { mStatus.textContent = "extension error"; return; }
-        if (!resp?.ok) {
-          armedRescan = false;
-          mStatus.textContent = `error — ${resp?.error || "failed to start"}`;
-          loadBtn.textContent = "Retry load";
-        }
-        // Otherwise the poll loop reports progress and fires the rescan.
-      });
-      setTimeout(() => { if (mStatus.isConnected) refreshStatus(); }, 1500);
-    });
-    const reBtn = el("button", "ytf-p-btn ytf-p-ghost", "Redownload");
-    reBtn.title = "Delete cached model files and download fresh. Use after a failed download.";
-    reBtn.addEventListener("click", () => {
-      if (!reBtn.dataset.armed) {
-        reBtn.dataset.armed = "1";
-        reBtn.textContent = "sure?";
-        setTimeout(() => {
-          if (reBtn.isConnected) { delete reBtn.dataset.armed; reBtn.textContent = "Redownload"; }
-        }, 3000);
-        return;
-      }
-      delete reBtn.dataset.armed;
-      reBtn.textContent = "Redownload";
-      armedRescan = true;
-      mStatus.textContent = "clearing cache…";
-      chrome.runtime.sendMessage({ type: "YTF_MODEL_REDOWNLOAD" }, (resp) => {
-        if (chrome.runtime.lastError) { mStatus.textContent = "extension error"; return; }
-        if (!resp?.ok) {
-          armedRescan = false;
-          mStatus.textContent = `error — ${resp?.error || "failed to start"}`;
-          loadBtn.textContent = "Retry load";
-        }
-        // Otherwise the poll loop reports progress and fires the rescan.
-      });
-      setTimeout(() => { if (mStatus.isConnected) refreshStatus(); }, 1500);
-    });
-    mRow.append(loadBtn, reBtn);
-    panel.appendChild(mRow);
-    panel.appendChild(mStatus);
-    refreshStatus();
-
     const actions = el("div", "ytf-p-actions");
     const rescan = el("button", "ytf-p-btn", "Rescan");
     rescan.title = "Clear cache and re-classify this page";
@@ -840,29 +720,6 @@
     } catch { /* ignore */ }
 
     chrome.storage.onChanged.addListener((changes, area) => {
-      // Model just became ready in the worker: immediately retry every
-      // failed card instead of waiting out their backoffs.
-      if (area === "local" && changes[PROGRESS_STORE_KEY]?.newValue?.state === "ready") {
-        let n = 0;
-        document.querySelectorAll(CARD_SELECTORS).forEach((card) => {
-          if (card instanceof HTMLElement && card.dataset.ytfError) {
-            delete card.dataset.ytfError;
-            delete card.dataset.ytfRetryAt;
-            delete card.dataset.ytfTopic;
-            delete card.dataset.ytfConfidence;
-            delete card.dataset.ytfScanned;
-            delete card.dataset.ytfKey;
-            n++;
-          }
-        });
-        if (n > 0) {
-          // NB: leave `pending` alone — in-flight requests still resolve
-          // and populate badges normally.
-          scheduleScan();
-          setTimeout(scan, 300);
-        }
-        return;
-      }
       if (area !== "sync") return;
       let needRescan = false;
       if (changes.enabled) state.enabled = changes.enabled.newValue;

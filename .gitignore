@@ -1,4 +1,3 @@
 node_modules/
 src/background.bundle.js
-src/offscreen.bundle.js
 src/vendor/

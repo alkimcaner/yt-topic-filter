@@ -9,11 +9,10 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["storage", "unlimitedStorage", "offscreen"],
+  "permissions": ["storage", "unlimitedStorage"],
   "host_permissions": [
     "*://*.youtube.com/*",
-    "https://huggingface.co/*",
-    "https://cdn.jsdelivr.net/*"
+    "http://localhost:9931/*"
   ],
   "background": {
     "service_worker": "src/background.bundle.js",
@@ -29,6 +28,6 @@
     }
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'"
+    "extension_pages": "script-src 'self'"
   }
 }

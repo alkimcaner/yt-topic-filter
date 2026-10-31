@@ -1,11 +1,6 @@
 // YT Topic Filter — background service worker (router + result cache).
-// The model lives in the offscreen document (src/offscreen.js): WASM cannot
-// init in a worker. This file owns the videoId cache, forwards inference to
-// the offscreen doc, and serves model status to the panel.
-const OFFSCREEN_URL = "src/offscreen.html";
-const PROGRESS_STORE_KEY = "ytf_model_progress_v1";
-const OFFSCREEN_READY_TIMEOUT_MS = 30000;
-const OFFSCREEN_STATUS_TIMEOUT_MS = 8000;
+// Classification runs against the local decision server at localhost:9931.
+const SERVER_URL = "http://localhost:9931";
 const CLASSIFY_TIMEOUT_MS = 180000;
 
 const CACHE_KEY = "ytf_cache_v1";
@@ -66,171 +61,7 @@ function getDefaultTopics() {
   ];
 }
 
-// ---- model status (mirrored from the offscreen doc, persisted so worker
-// restarts don't blank the panel back to 0%) ----
-let memStatus = null;
-let persistTimer = null;
 
-async function seedStatus() {
-  if (memStatus) return;
-  try {
-    const data = await chrome.storage.local.get(PROGRESS_STORE_KEY);
-    memStatus = data[PROGRESS_STORE_KEY] || null;
-  } catch {
-    memStatus = null;
-  }
-}
-
-function setStatus(status) {
-  memStatus = { ...status };
-  if (persistTimer) return;
-  persistTimer = setTimeout(async () => {
-    persistTimer = null;
-    try {
-      await chrome.storage.local.set({ [PROGRESS_STORE_KEY]: memStatus });
-    } catch { /* ignore */ }
-  }, 1000);
-}
-
-function getStatus() {
-  return memStatus ? { ...memStatus } : null;
-}
-
-// ---- offscreen document plumbing ----
-let offscreenCreating = null;
-
-// chrome.offscreen needs Chromium 109+. hasDocument() needs 116+.
-// Tolerate older: without hasDocument, create and treat "already exists"
-// as "it is there".
-function offscreenAPI() {
-  const api = chrome.offscreen;
-  if (!api || typeof api.createDocument !== "function") {
-    throw new Error(
-      "offscreen support is unavailable (needs the 'offscreen' permission and Chromium 109+) — reload the extension, update Brave, or use the server version"
-    );
-  }
-  return api;
-}
-
-async function hasOffscreenDoc(api) {
-  if (typeof api.hasDocument === "function") return api.hasDocument();
-  return null; // unknown on Chromium 109-115
-}
-
-async function createOffscreenDoc(api) {
-  try {
-    await api.createDocument({
-      url: OFFSCREEN_URL,
-      reasons: [api.Reason.WORKERS],
-      justification: "Run the local video-topic model (WASM) off the service worker thread.",
-    });
-  } catch (e) {
-    // A document already exists (the 109-115 path without hasDocument).
-    if (!/single offscreen|already exists|only one/i.test(String(e?.message || e))) throw e;
-  }
-}
-
-let reqSeq = 0;
-const pending = new Map();
-
-// Raw correlated post. Does NOT ensure the document (so liveness checks
-// and creation don't recurse into each other).
-function postToDoc(type, payload, timeoutMs = 0) {
-  return new Promise((resolve, reject) => {
-    const id = `r${++reqSeq}`;
-    let timer = null;
-    if (timeoutMs > 0) {
-      timer = setTimeout(() => {
-        pending.delete(id);
-        reject(new Error("offscreen request timed out"));
-      }, timeoutMs);
-    }
-    pending.set(id, { resolve, reject, timer });
-    try {
-      chrome.runtime.sendMessage({ target: "offscreen", type, id, payload }, () => {
-        if (chrome.runtime.lastError) {
-          // No listener yet (doc still booting): keep waiting; the
-          // timeout above bounds the wait.
-        }
-      });
-    } catch (e) {
-      pending.delete(id);
-      if (timer) clearTimeout(timer);
-      reject(e);
-    }
-  });
-}
-
-// Liveness handshake: the doc answers pings once its module runs.
-// More robust than a one-shot READY flag across worker restarts.
-async function waitForDocAlive(timeoutMs) {
-  const start = Date.now();
-  for (;;) {
-    try {
-      const res = await postToDoc("YTF_OFF_STATUS", null, 3000);
-      if (res?.ok) return;
-    } catch { /* not up yet */ }
-    if (Date.now() - start > timeoutMs) {
-      throw new Error("offscreen document did not start");
-    }
-    await new Promise((r) => setTimeout(r, 500));
-  }
-}
-
-async function ensureOffscreen() {
-  const api = offscreenAPI();
-  if (offscreenCreating) {
-    await offscreenCreating;
-  } else {
-    let exists = false;
-    try {
-      exists = (await hasOffscreenDoc(api)) === true;
-    } catch {
-      exists = false;
-    }
-    if (!exists) {
-      offscreenCreating = createOffscreenDoc(api).finally(() => {
-        offscreenCreating = null;
-      });
-      await offscreenCreating;
-    }
-  }
-  await waitForDocAlive(OFFSCREEN_READY_TIMEOUT_MS);
-}
-
-function sendToOffscreen(type, payload, timeoutMs = 0) {
-  return (async () => {
-    await ensureOffscreen();
-    return postToDoc(type, payload, timeoutMs);
-  })();
-}
-
-function settleOffResult(msg) {
-  const p = pending.get(msg.id);
-  if (!p) return;
-  pending.delete(msg.id);
-  if (p.timer) clearTimeout(p.timer);
-  p.resolve(msg);
-}
-
-// Reconcile after worker boot: seed from storage, and only if a download
-// was in flight, check whether its document is still alive. (Never create a
-// document here: that would spawn one on every worker wake.)
-(async function reconcileOnBoot() {
-  await seedStatus();
-  if (!memStatus || memStatus.state !== "loading") return;
-  try {
-    const api = offscreenAPI();
-    const known = await hasOffscreenDoc(api).catch(() => null);
-    if (known === false) throw new Error("no doc");
-    if (known === null) return; // 109-115: can't tell; leave the snapshot
-    const res = await postToDoc("YTF_OFF_STATUS", null, OFFSCREEN_STATUS_TIMEOUT_MS);
-    if (res?.ok && res.status) setStatus(res.status);
-  } catch {
-    // Document died mid-download: back to idle so the panel offers Load.
-    setStatus({ ...memStatus, state: "idle", error: "interrupted — click Load to resume" });
-  }
-})();
 
 async function handleClassify({ key, title, channel }) {
   await loadCache();
@@ -248,21 +79,41 @@ async function handleClassify({ key, title, channel }) {
   }
 
   try {
-    const res = await sendToOffscreen(
-      "YTF_OFF_CLASSIFY",
-      { title, channel, topics },
-      CLASSIFY_TIMEOUT_MS
-    );
-    if (!res?.ok) throw new Error(res?.error || "offscreen classify failed");
-    const result = res.result || {};
-    let finalTopic = result.topic || "other";
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), CLASSIFY_TIMEOUT_MS);
+    const res = await fetch(`${SERVER_URL}/v1/systemone`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        state: title || "(unknown)",
+        questions: {
+          topic: {
+            type: "choice",
+            instructions: "What topic is this video about?",
+            criteria: Object.fromEntries(topics.map((t) => [t.name, t.description || t.name])),
+          },
+        },
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) throw new Error(`server HTTP ${res.status}`);
+    const data = await res.json();
+    const result = data?.answers?.topic || {};
+    let finalTopic = result.choice || "other";
     if ((result.confidence ?? 0) < (settings.minConfidence ?? 0)) {
       finalTopic = "other";
     }
     if (finalTopic !== "other" && !topics.some((t) => t.name === finalTopic)) {
       finalTopic = "other";
     }
-    const out = { topic: finalTopic, rawTopic: result.topic, confidence: result.confidence, probabilities: result.probabilities, cached: false };
+    const out = {
+      topic: finalTopic,
+      rawTopic: result.choice || "other",
+      confidence: result.confidence ?? 0,
+      probabilities: result.probabilities || {},
+      cached: false,
+    };
     if (key) {
       memCache.set(key, out);
       scheduleSave();
@@ -289,39 +140,10 @@ chrome.runtime.onInstalled.addListener(async () => {
 });
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  // Traffic for the offscreen doc: results and progress pushes.
-  if (msg?.target !== "offscreen" && (msg?.type === "YTF_OFF_RESULT" || msg?.type === "YTF_OFF_PROGRESS" || msg?.type === "YTF_OFF_READY")) {
-    if (msg.type === "YTF_OFF_RESULT") settleOffResult(msg);
-    else if (msg.type === "YTF_OFF_PROGRESS" && msg.status) setStatus(msg.status);
-    else if (msg.type === "YTF_OFF_READY") {
-      if (msg.status) setStatus(msg.status);
-    }
-    return false;
-  }
-  if (msg?.target === "offscreen") return false; // not ours; the doc handles it
   (async () => {
     if (msg?.type === "YTF_CLASSIFY") {
       const r = await handleClassify(msg);
       sendResponse({ ok: true, result: r });
-    } else if (msg?.type === "YTF_MODEL_STATUS") {
-      await seedStatus();
-      sendResponse({ ok: true, status: getStatus() });
-    } else if (msg?.type === "YTF_MODEL_LOAD") {
-      // Fire-and-forget: the doc ACKs receipt, then works for minutes.
-      // Progress/ready surface through the status poll.
-      try {
-        const res = await sendToOffscreen("YTF_OFF_LOAD", null, 15000);
-        sendResponse({ ok: !!res?.ok, error: res?.error, status: getStatus() });
-      } catch (e) {
-        sendResponse({ ok: false, error: String(e?.message || e), status: getStatus() });
-      }
-    } else if (msg?.type === "YTF_MODEL_REDOWNLOAD") {
-      try {
-        const res = await sendToOffscreen("YTF_OFF_REDOWNLOAD", null, 15000);
-        sendResponse({ ok: !!res?.ok, error: res?.error, status: getStatus() });
-      } catch (e) {
-        sendResponse({ ok: false, error: String(e?.message || e), status: getStatus() });
-      }
     } else if (msg?.type === "YTF_CLEAR_CACHE") {
       memCache.clear();
       await chrome.storage.local.remove(CACHE_KEY);
