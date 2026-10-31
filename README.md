@@ -8,13 +8,3 @@ Hide/show YouTube video cards by topic. Classification runs against a local deci
 2. Load unpacked → select this folder.
 3. Run the decision server on `localhost:9931`.
 4. Open YouTube and use the `Topic filter` top-bar button.
-
-## Files
-
-```
-manifest.json
-src/background.js
-src/content.js
-src/content.css
-icons/
-```
