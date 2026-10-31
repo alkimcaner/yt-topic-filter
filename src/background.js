@@ -85,7 +85,7 @@ async function handleClassify({ key, title, channel }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        state: title || "(unknown)",
+        state: title ? (channel ? `${title}\nChannel: ${channel}` : title) : "(unknown)",
         questions: {
           topic: {
             type: "choice",
