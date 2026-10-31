@@ -1,7 +1,0 @@
-{
-  "name": "yt-topic-filter",
-  "version": "0.2.0",
-  "private": true,
-  "type": "module",
-  "description": "YT Topic Filter — server-backed topic filtering (Brave extension)."
-}
